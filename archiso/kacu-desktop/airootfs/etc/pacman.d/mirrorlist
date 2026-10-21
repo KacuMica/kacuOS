@@ -1,0 +1,11 @@
+##
+## Arch Linux repository mirrorlist — baked into the kacuOS live system.
+##
+## Regenerate a ranked list on an installed system with:
+##     reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist
+##
+
+## Worldwide (CDN)
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch

@@ -1,0 +1,11 @@
+NAME="kacuOS"
+PRETTY_NAME="kacuOS"
+ID=kacu
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;23;147;209"
+HOME_URL="https://github.com/kacu-os/kacuOS"
+DOCUMENTATION_URL="https://github.com/kacu-os/kacuOS/blob/main/README.md"
+SUPPORT_URL="https://github.com/kacu-os/kacuOS/issues"
+BUG_REPORT_URL="https://github.com/kacu-os/kacuOS/issues"
+LOGO=kacu-logo

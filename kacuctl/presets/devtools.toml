@@ -1,0 +1,7 @@
+[preset]
+name = "devtools"
+description = "GCC, cargo, build essentials"
+profile = ["desktop", "server"]
+
+[packages]
+pacman = ["gcc", "cargo", "make", "cmake", "pkg-config"]

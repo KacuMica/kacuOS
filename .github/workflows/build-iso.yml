@@ -1,0 +1,46 @@
+name: Build kacuOS ISO
+
+# Builds the GNOME ISO on an Arch container and uploads it as an artifact.
+# This is the recommended path when you only have Windows: no local Arch
+# installation is required.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm archiso git python rust gcc make
+
+      - name: Bake tooling into the profile
+        run: |
+          cd archiso
+          python bake.py
+          python setup_boot_files.py kacu-desktop
+
+      - name: Build the ISO
+        run: |
+          cd archiso/kacu-desktop
+          mkarchiso -v -o out/ .
+
+      - name: Show the result
+        run: ls -lh archiso/kacu-desktop/out/
+
+      - name: Upload the ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kacuos-iso
+          path: archiso/kacu-desktop/out/*.iso
+          if-no-files-found: error

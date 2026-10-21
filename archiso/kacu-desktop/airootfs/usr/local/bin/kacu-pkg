@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+# ==========================================================================
+# kacu-pkg — package "box" (preset) manager for kacuOS
+#
+# Reads TOML presets from /etc/kacu/presets (override with KACU_PRESETS_DIR),
+# installs their pacman packages, then optionally runs pre/post-install hooks.
+# Hooks may be shell scripts (.sh, run with bash) or Lua scripts (.lua, run
+# with the `lua` interpreter when it is available) — that is the Lua-based
+# customization hook mentioned in the kacuOS plan.
+#
+# Requirements: Python 3.11+ (stdlib `tomllib`). No third-party packages.
+#
+# Usage:
+#   kacu-pkg list
+#   kacu-pkg info dev
+#   kacu-pkg install dev            # install the "dev" box
+#   kacu-pkg install server ai      # several boxes at once
+#   kacu-pkg install --all --dry-run
+#   kacu-pkg status
+# ==========================================================================
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+DEFAULT_PRESETS_DIR = Path("/etc/kacu/presets")
+
+
+class C:
+    """ANSI colours, disabled automatically when stdout is not a TTY."""
+
+    _on = sys.stdout.isatty()
+    BOLD = "\033[1m" if _on else ""
+    GREEN = "\033[32m" if _on else ""
+    YELLOW = "\033[33m" if _on else ""
+    RED = "\033[31m" if _on else ""
+    CYAN = "\033[36m" if _on else ""
+    RESET = "\033[0m" if _on else ""
+
+
+# --- preset discovery -----------------------------------------------------
+def presets_dir() -> Path:
+    """Directory holding the *.toml presets."""
+    return Path(os.environ.get("KACU_PRESETS_DIR", str(DEFAULT_PRESETS_DIR)))
+
+
+def load_preset(name: str) -> dict:
+    path = presets_dir() / f"{name}.toml"
+    if not path.is_file():
+        raise SystemExit(f"{C.RED}error:{C.RESET} preset not found: {path}")
+    with path.open("rb") as fh:
+        return tomllib.load(fh)
+
+
+def all_presets() -> list[tuple[str, dict]]:
+    result: list[tuple[str, dict]] = []
+    directory = presets_dir()
+    if directory.is_dir():
+        for path in sorted(directory.glob("*.toml")):
+            with path.open("rb") as fh:
+                result.append((path.stem, tomllib.load(fh)))
+    return result
+
+
+# --- command helpers ------------------------------------------------------
+def is_root() -> bool:
+    """True when running as root. Always True on non-POSIX (for testing)."""
+    geteuid = getattr(os, "geteuid", None)
+    return True if geteuid is None else geteuid() == 0
+
+
+def pacman_cmd() -> list[str]:
+    """Run pacman directly when root, otherwise re-exec it through sudo."""
+    return ["pacman"] if is_root() else ["sudo", "pacman"]
+
+
+def run(cmd: list[str], dry_run: bool = False) -> int:
+    print(f"{C.CYAN}$ {' '.join(cmd)}{C.RESET}")
+    if dry_run:
+        return 0
+    return subprocess.call(cmd)
+
+
+def install_packages(packages: list[str], dry_run: bool = False) -> list[str]:
+    """Install packages; return the ones that could not be installed.
+
+    Strategy: install everything in a single transaction (fast, correct
+    dependency resolution). If that fails — typically because a package only
+    exists in the AUR — fall back to installing one by one and report the
+    failures instead of aborting the whole box.
+    """
+    if not packages:
+        return []
+
+    base = pacman_cmd()
+    run(base + ["-Sy"], dry_run)                                  # refresh db
+    rc = run(base + ["-S", "--needed", "--noconfirm", *packages], dry_run)
+    if rc == 0:
+        return []
+
+    print(f"{C.YELLOW}warn:{C.RESET} bulk install failed, retrying package by package")
+    failed: list[str] = []
+    for pkg in packages:
+        if run(base + ["-S", "--needed", "--noconfirm", pkg], dry_run) != 0:
+            failed.append(pkg)
+    return failed
+
+
+def run_hook(path: Path, dry_run: bool = False) -> None:
+    """Run a hook: .py via python3, .lua via lua, .sh via bash."""
+    if not path.is_file():
+        print(f"{C.YELLOW}warn:{C.RESET} hook not found: {path}")
+        return
+
+    suffix = path.suffix.lower()
+    if suffix == ".py":
+        interpreter = shutil.which("python3") or sys.executable
+        if not interpreter:
+            print(f"{C.YELLOW}warn:{C.RESET} python3 not found, skipping {path.name}")
+            return
+        cmd = [interpreter, str(path)]
+    elif suffix == ".lua":
+        interpreter = shutil.which("lua")
+        if not interpreter:
+            print(f"{C.YELLOW}warn:{C.RESET} lua not found, skipping {path.name}")
+            return
+        cmd = [interpreter, str(path)]
+    else:
+        cmd = ["bash", str(path)]
+
+    print(f"{C.BOLD}==> hook:{C.RESET} {path.name}")
+    run(cmd, dry_run)
+
+
+# --- subcommands ----------------------------------------------------------
+def cmd_list(_args: argparse.Namespace) -> int:
+    presets = all_presets()
+    if not presets:
+        print(f"no presets found in {presets_dir()}")
+        return 0
+    print(f"{C.BOLD}Available boxes in {presets_dir()}:{C.RESET}")
+    for fallback, data in presets:
+        meta = data.get("preset", {})
+        count = len(data.get("packages", {}).get("pacman", []))
+        print(f"  {C.GREEN}{meta.get('name', fallback):<10}{C.RESET} "
+              f"{meta.get('description', '')}  ({count} pkgs)")
+    return 0
+
+
+def cmd_info(args: argparse.Namespace) -> int:
+    data = load_preset(args.name)
+    meta = data.get("preset", {})
+    print(f"{C.BOLD}{meta.get('name', args.name)}{C.RESET} — {meta.get('description', '')}")
+    packages = data.get("packages", {}).get("pacman", [])
+    print(f"  pacman: {' '.join(packages) if packages else '(none)'}")
+    for key, value in data.get("hooks", {}).items():
+        print(f"  hook[{key}]: {value}")
+    return 0
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    names = list(args.names)
+    if args.all:
+        names = [name for name, _ in all_presets()]
+    if not names:
+        print("error: give at least one preset name (or --all)", file=sys.stderr)
+        return 2
+
+    failed_all: list[str] = []
+    for name in names:
+        data = load_preset(name)
+        meta = data.get("preset", {})
+        hooks = data.get("hooks", {})
+        packages = data.get("packages", {}).get("pacman", [])
+
+        print(f"\n{C.BOLD}==> box: {meta.get('name', name)}{C.RESET} — {meta.get('description', '')}")
+
+        if hooks.get("pre_install"):
+            run_hook(presets_dir() / hooks["pre_install"], args.dry_run)
+
+        failed_all.extend(install_packages(packages, args.dry_run))
+
+        if not args.no_hooks and hooks.get("post_install"):
+            run_hook(presets_dir() / hooks["post_install"], args.dry_run)
+
+    if failed_all:
+        unique = " ".join(sorted(set(failed_all)))
+        print(f"\n{C.YELLOW}Not installed (probably AUR-only):{C.RESET} {unique}")
+        print("Install them with an AUR helper (paru/yay) or build from source.")
+
+    print(f"\n{C.GREEN}{C.BOLD}Done.{C.RESET}")
+    return 0
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    print(f"{C.BOLD}kacu-pkg status{C.RESET}  (presets dir: {presets_dir()})")
+    try:
+        installed = set(subprocess.check_output(["pacman", "-Qq"], text=True).split())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        installed = set()
+
+    for name, data in all_presets():
+        packages = data.get("packages", {}).get("pacman", [])
+        have = sum(1 for pkg in packages if pkg in installed)
+        print(f"  {name:<10} {have}/{len(packages)} packages installed")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="kacu-pkg",
+        description="kacuOS package box (preset) manager",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_list = sub.add_parser("list", help="list available boxes")
+    p_list.set_defaults(func=cmd_list)
+
+    p_info = sub.add_parser("info", help="show the contents of a box")
+    p_info.add_argument("name")
+    p_info.set_defaults(func=cmd_info)
+
+    p_install = sub.add_parser("install", help="install one or more boxes")
+    p_install.add_argument("names", nargs="*")
+    p_install.add_argument("--all", action="store_true", help="install every box")
+    p_install.add_argument("--dry-run", action="store_true", help="only show commands")
+    p_install.add_argument("--no-hooks", action="store_true", help="skip pre/post hooks")
+    p_install.set_defaults(func=cmd_install)
+
+    p_status = sub.add_parser("status", help="show which boxes are installed")
+    p_status.set_defaults(func=cmd_status)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

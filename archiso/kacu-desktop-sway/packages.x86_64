@@ -1,0 +1,14 @@
+base
+linux
+linux-firmware
+sudo
+git
+neovim
+bash
+zsh
+zram-generator
+sway
+foot
+seatd
+curl
+fastfetch

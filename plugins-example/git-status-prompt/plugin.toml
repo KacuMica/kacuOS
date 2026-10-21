@@ -1,0 +1,9 @@
+[plugin]
+name = "git-status-prompt"
+version = "0.1.0"
+author = "kacuOS examples"
+
+[permissions]
+exec = false
+network = false
+hooks = ["shell_prompt"]

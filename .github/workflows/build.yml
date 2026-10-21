@@ -1,0 +1,57 @@
+name: Build check
+
+# Runs on every push and pull request targeting main.
+# This is the whole point of CI: catch a broken build automatically,
+# instead of finding out manually next time you clone the repo.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-kacuctl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build kacuctl
+        working-directory: ./kacuctl
+        run: cargo build --release
+
+      - name: Run kacuctl --help (sanity check the binary actually works)
+        working-directory: ./kacuctl
+        run: ./target/release/kacuctl --help
+
+  build-kacu-sysinfo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Build kacu-sysinfo
+        working-directory: ./kacu-sysinfo
+        run: make
+
+      - name: Run it (sanity check)
+        working-directory: ./kacu-sysinfo
+        run: ./kacu-sysinfo
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Build the Docker image
+        run: docker build -t kacuctl:ci .
+
+      - name: Sanity check — run kacuctl --help inside the container
+        run: docker run --rm kacuctl:ci --help
+
+      - name: Sanity check — kacuctl list (reads baked-in presets)
+        run: docker run --rm kacuctl:ci list

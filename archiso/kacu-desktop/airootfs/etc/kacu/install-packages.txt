@@ -1,0 +1,78 @@
+# Packages installed by kacu_install on the TARGET system.
+# One package or group per line; '#' starts a comment.
+#
+# This is intentionally separate from the live ISO's packages.x86_64:
+# the ISO needs mkinitcpio-archiso/syslinux/etc., while the installed system
+# needs GRUB and the regular desktop stack.
+
+# --- Base system ---------------------------------------------------------
+base
+linux
+linux-firmware
+intel-ucode
+amd-ucode
+sudo
+networkmanager
+wpa_supplicant
+wireless-regdb
+man-db
+less
+bash-completion
+e2fsprogs
+dosfstools
+
+# --- Bootloader ----------------------------------------------------------
+grub
+efibootmgr
+os-prober
+
+# --- Low-RAM tuning ------------------------------------------------------
+zram-generator
+
+# --- Minimal GNOME (Wayland) --------------------------------------------
+gnome-shell
+mutter
+gnome-session
+gnome-settings-daemon
+gnome-control-center
+gnome-keyring
+gnome-console
+nautilus
+gvfs
+xdg-user-dirs
+xdg-desktop-portal-gnome
+xdg-utils
+adwaita-icon-theme
+gnome-themes-extra
+gdm
+polkit
+accountsservice
+upower
+power-profiles-daemon
+
+# --- Audio / graphics ----------------------------------------------------
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+mesa
+xorg-xwayland
+alsa-utils
+sof-firmware
+
+# --- Fonts ---------------------------------------------------------------
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu
+ttf-liberation
+
+# --- Development / scripting --------------------------------------------
+git
+python
+lua
+neovim
+micro
+gcc
+make
+pkgconf
+cmake

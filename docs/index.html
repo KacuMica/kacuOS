@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kacuOS — a terminal-first Linux distro for slow machines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060809;
+    --bg-raised: #0d1117;
+    --blue: #2f9be0;
+    --blue-dim: #1c6699;
+    --cyan: #3ddbd9;
+    --text: #eaf2f7;
+    --text-dim: #7d8b96;
+    --line: #1c242c;
+    --red: #ff5f4d;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 176, 0, 0.02) 0px,
+        rgba(255, 176, 0, 0.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  ::selection { background: var(--blue); color: #000; }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .topbar {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .topbar .wrap { display: flex; justify-content: space-between; align-items: center; }
+  .topbar a { color: var(--text-dim); }
+  .topbar a:hover { color: var(--blue); }
+  .topbar nav { display: flex; gap: 20px; }
+
+  .hero { padding: 64px 0 48px; }
+  .boot {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 22px 24px;
+    min-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 14.5px;
+  }
+  .boot .prompt-line { color: var(--text); }
+  .boot .dim { color: var(--text-dim); }
+  .boot .blue { color: var(--blue); font-weight: 700; }
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--blue);
+    margin-left: 2px;
+    vertical-align: -2px;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .hero h1 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    margin: 40px 0 6px;
+    font-weight: 500;
+  }
+  .hero .tagline {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--text);
+    margin: 0 0 20px;
+    line-height: 1.35;
+  }
+  .hero .tagline .blue { color: var(--blue); }
+
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 26px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--blue-dim);
+    color: var(--blue);
+    padding: 11px 18px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn:hover {
+    background: var(--blue);
+    color: #1a1200;
+    text-decoration: none;
+  }
+  .btn.ghost { border-color: var(--line); color: var(--text-dim); }
+  .btn.ghost:hover { background: var(--bg-raised); color: var(--text); }
+
+  section { padding: 46px 0; border-top: 1px solid var(--line); }
+  .promptline {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .promptline .user { color: var(--cyan); }
+  .promptline .at { color: var(--text-dim); }
+  .promptline .host { color: var(--blue); }
+  .promptline .cmd { color: var(--text); font-weight: 700; }
+
+  section h2 {
+    font-size: 22px;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+  section p { color: var(--text-dim); max-width: 60ch; }
+  section p.lead { color: var(--text); font-size: 16.5px; }
+
+  .presetlist {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 20px;
+    font-size: 14px;
+    margin-top: 18px;
+  }
+  .presetlist .row { display: flex; gap: 10px; padding: 5px 0; }
+  .presetlist .name { color: var(--cyan); min-width: 90px; font-weight: 700; }
+  .presetlist .desc { color: var(--text-dim); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-top: 20px;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .grid .cell { background: var(--bg-raised); padding: 20px 22px; }
+  .grid .cell .k { color: var(--blue); font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .grid .cell p { margin: 0; font-size: 13.5px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+  .code {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 16px 18px;
+    font-size: 13.5px;
+    overflow-x: auto;
+    margin-top: 16px;
+    color: var(--text);
+  }
+  .code .c-kw { color: var(--blue); }
+  .code .c-str { color: var(--cyan); }
+  .code .c-com { color: var(--text-dim); font-style: italic; }
+
+  .downloads { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+  .dl-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid var(--line);
+    background: var(--bg-raised);
+    border-radius: 6px;
+    padding: 16px 20px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .dl-row .meta .t { color: var(--text); font-weight: 700; font-size: 14.5px; }
+  .dl-row .meta .s { color: var(--text-dim); font-size: 13px; margin-top: 3px; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 32px 0 60px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  footer a { color: var(--text-dim); }
+  footer a:hover { color: var(--blue); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a href="#top" style="color:var(--blue); font-weight:700;">kacuOS</a>
+    <nav>
+      <a href="#presets">presets</a>
+      <a href="#plugins">plugins</a>
+      <a href="#download">download</a>
+      <a href="kacuctl.html" style="color:var(--cyan);">kacuctl →</a>
+      <a href="https://github.com/kacu-os/kacuOS" target="_blank" rel="noopener">github ↗</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="hero" id="top">
+    <div class="boot" id="boot" aria-label="terminal boot sequence"></div>
+
+    <h1>a terminal-first Linux distro</h1>
+    <p class="tagline">Built for machines that can't spare the RAM for a desktop <span class="blue">— and for people who'd rather live in a shell anyway.</span></p>
+
+    <div class="cta-row">
+      <a class="btn" href="#download">Download ISO</a>
+      <a class="btn ghost" href="https://github.com/kacu-os/kacuOS" target="_blank" rel="noopener">View source on GitHub</a>
+    </div>
+  </div>
+
+  <section id="about">
+    <div class="promptline"><span class="user">you</span><span class="at">@</span><span class="host">kacu</span> <span class="cmd">cat about.txt</span></div>
+    <h2>What this actually is</h2>
+    <p class="lead">kacuOS is an Arch-based distribution with no desktop environment by default — just a shell, a minimal set of tools, and <a href="https://github.com/kacu-os/kacuOS/tree/main/kacuctl">kacuctl</a>, a small Rust CLI that installs curated package bundles and lets you extend the system with sandboxed Lua plugins.</p>
+    <p>Arch already gives you full control over what's installed. kacuOS just starts from a smaller default and gets out of your way after that — no compositor by default, no GUI installer, no bundled apps you didn't ask for.</p>
+  </section>
+
+  <section id="presets">
+    <div class="promptline"><span class="user">you</span><span class="at">@</span><span class="host">kacu</span> <span class="cmd">kacuctl list</span></div>
+    <h2>Presets, not a fixed install</h2>
+    <p>Every preset is a plain TOML file you can read before you run it — a name, a package list, an optional setup script. No opaque installer scripts.</p>
+    <div class="presetlist">
+      <div class="row"><span class="name">devtools</span><span class="desc">gcc, cargo, make, cmake — build essentials</span></div>
+      <div class="row"><span class="name">browser</span><span class="desc">Firefox, minimal sway integration</span></div>
+      <div class="row"><span class="name">editor</span><span class="desc">VS Code, installed from the official tarball</span></div>
+      <div class="row"><span class="name">cluster</span><span class="desc">Docker + k3s, traefik/servicelb/metrics-server disabled by default</span></div>
+    </div>
+  </section>
+
+  <section id="efficiency">
+    <div class="promptline"><span class="user">you</span><span class="at">@</span><span class="host">kacu</span> <span class="cmd">kacuctl status</span></div>
+    <h2>Built around a RAM budget</h2>
+    <p>zram is on by default. Optional presets stay optional — a fresh Server install has no browser, no compiler, no container runtime until you ask for one.</p>
+    <div class="grid">
+      <div class="cell"><div class="k">Server profile</div><p>Headless base: shell, git, an editor, nothing graphical.</p></div>
+      <div class="cell"><div class="k">Desktop profile</div><p>Adds sway as a minimal compositor — just enough to open one app window, not a full DE.</p></div>
+      <div class="cell"><div class="k">kacu-sysinfo</div><p>A small C utility that reads RAM/CPU/load straight from /proc — no shelling out to heavier tools.</p></div>
+      <div class="cell"><div class="k">Rolling release</div><p>Arch underneath — pacman, AUR-compatible, no version lock-in.</p></div>
+    </div>
+  </section>
+
+  <section id="plugins">
+    <div class="promptline"><span class="user">you</span><span class="at">@</span><span class="host">kacu</span> <span class="cmd">cat plugin.toml init.lua</span></div>
+    <h2>Plugins ask before they act</h2>
+    <p>Plugins are Lua, run in a sandbox. A manifest declares what a plugin is allowed to do — and kacuctl shows you that request before it installs anything.</p>
+    <div class="code">[permissions]<br>
+<span class="c-kw">exec</span> = <span class="c-str">false</span>&nbsp;&nbsp;<span class="c-com">-- most plugins never need this</span><br>
+<span class="c-kw">hooks</span> = [<span class="c-str">"shell_prompt"</span>]<br>
+<br>
+<span class="c-com">-- init.lua</span><br>
+kacu_hooks[<span class="c-str">"shell_prompt"</span>] = <span class="c-kw">function</span>()<br>
+&nbsp;&nbsp;<span class="c-kw">local</span> branch = kacu.exec_readonly(<span class="c-str">"git branch --show-current"</span>)<br>
+&nbsp;&nbsp;kacu.print(<span class="c-str">"branch: "</span> .. branch)<br>
+<span class="c-kw">end</span></div>
+    <p style="margin-top:16px;">Full guide: <a href="https://github.com/kacu-os/kacuOS/blob/main/PLUGINS.md">PLUGINS.md</a></p>
+  </section>
+
+  <section id="download">
+    <div class="promptline"><span class="user">you</span><span class="at">@</span><span class="host">kacu</span> <span class="cmd">ls releases/</span></div>
+    <h2>Download</h2>
+    <p>kacuOS is early — pick what you actually need right now.</p>
+    <div class="downloads">
+      <div class="dl-row">
+        <div class="meta">
+          <div class="t">kacuctl (standalone)</div>
+          <div class="s">Works on any existing Arch install. Build from source, no ISO needed.</div>
+        </div>
+        <a class="btn" href="https://github.com/kacu-os/kacuOS/tree/main/kacuctl" target="_blank" rel="noopener">Get kacuctl</a>
+      </div>
+      <div class="dl-row">
+        <div class="meta">
+          <div class="t">kacuOS Server ISO</div>
+          <div class="s">Headless base image. See GitHub Releases for the latest build.</div>
+        </div>
+        <a class="btn ghost" href="https://github.com/kacu-os/kacuOS/releases" target="_blank" rel="noopener">See releases</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>kacuOS — MIT licensed</span>
+      <span><a href="https://github.com/kacu-os/kacuOS" target="_blank" rel="noopener">github.com/kacu-os/kacuOS</a></span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var lines = [
+    { t: "kacuOS 1.0 (Arch-based) tty1", cls: "dim", pause: 200 },
+    { t: "", pause: 100 },
+    { t: "archlinux login: root", cls: "prompt-line", pause: 300 },
+    { t: "Password: ", cls: "prompt-line", pause: 250 },
+    { t: "", pause: 150 },
+    { t: "==================================", cls: "blue", pause: 20 },
+    { t: "   Welcome to kacuOS", cls: "blue", pause: 20 },
+    { t: "==================================", cls: "blue", pause: 300 },
+    { t: "", pause: 100 },
+    { t: "Choose a shell to work with:", cls: "dim", pause: 100 },
+    { t: "  1) bash", cls: "dim", pause: 60 },
+    { t: "  2) zsh", cls: "dim", pause: 400 },
+    { t: "> 2", cls: "prompt-line", pause: 500 },
+    { t: "", pause: 200 },
+    { t: "[root@kacu ~]# kacuctl status", cls: "prompt-line", pause: 400 },
+    { t: "Memory total: 512.0 MB   Memory used: 61.2 MB", cls: "dim", pause: 20 },
+    { t: "Load avg: 0.02 0.01 0.00", cls: "dim", pause: 600 },
+  ];
+
+  var el = document.getElementById("boot");
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (reduceMotion) {
+    el.innerHTML = lines.map(function (l) {
+      return '<div class="' + (l.cls || '') + '">' + l.t + '</div>';
+    }).join("");
+    return;
+  }
+
+  var li = 0, ci = 0, current = document.createElement("div");
+  el.appendChild(current);
+  current.className = lines[0].cls || "";
+
+  function tick() {
+    if (li >= lines.length) {
+      var cur = document.createElement("span");
+      cur.className = "cursor";
+      el.appendChild(cur);
+      return;
+    }
+    var line = lines[li];
+    if (ci < line.t.length) {
+      current.textContent += line.t[ci];
+      ci++;
+      setTimeout(tick, 12 + Math.random() * 18);
+    } else {
+      li++;
+      ci = 0;
+      if (li < lines.length) {
+        current = document.createElement("div");
+        current.className = lines[li].cls || "";
+        el.appendChild(current);
+      }
+      setTimeout(tick, line.pause);
+    }
+  }
+  setTimeout(tick, 300);
+})();
+</script>
+
+</body>
+</html>

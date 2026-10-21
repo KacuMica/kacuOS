@@ -1,0 +1,10 @@
+[preset]
+name = "cluster"
+description = "Docker + k3s (minimal, no traefik/servicelb/metrics)"
+profile = ["server", "desktop"]
+
+[packages]
+pacman = ["docker"]
+
+[hooks]
+post_install = "hooks/cluster-post.py"

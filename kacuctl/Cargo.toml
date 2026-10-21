@@ -1,0 +1,22 @@
+[package]
+name = "kacuctl"
+version = "0.1.0"
+edition = "2021"
+description = "kacuOS customization CLI: presets, plugins, themes"
+
+[[bin]]
+name = "kacuctl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+colored = "2"
+mlua = { version = "0.9", features = ["lua54", "vendored"] }
+
+# Note: if building with an old rustc (<1.80) and you hit
+# "feature `edition2024` is required" — pin versions:
+# clap = "=4.4.18", toml = "0.8"
+

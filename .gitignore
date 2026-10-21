@@ -1,0 +1,28 @@
+# Rust build artifacts
+/kacuctl/target
+/kacuctl/Cargo.lock
+/kacuctl/plugins
+
+# archiso build artifacts (huge, regenerated every build)
+/archiso/*/work
+/archiso/*/out
+/archiso/**/out
+
+# C build artifacts
+/kacu-sysinfo/kacu-sysinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# QEMU / local test artifacts
+*.qcow2
+*.iso
+kacuos-vars.fd
+
+# Editors / OS junk
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

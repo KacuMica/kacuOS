@@ -1,0 +1,10 @@
+[preset]
+name = "editor"
+description = "VS Code (lightweight, no JetBrains — see kacuOS efficiency notes)"
+profile = ["desktop"]
+
+[packages]
+pacman = ["curl", "tar"]
+
+[hooks]
+post_install = "hooks/editor-post.py"

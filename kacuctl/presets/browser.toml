@@ -1,0 +1,7 @@
+[preset]
+name = "browser"
+description = "Firefox with minimal sway integration"
+profile = ["desktop"]
+
+[packages]
+pacman = ["firefox"]
