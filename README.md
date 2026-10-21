@@ -29,7 +29,7 @@ archiso/
 kacu-install/                # the Python installer (kacu_install)
 kacu-pkg/                    # Python box manager + TOML presets
 kacuctl/                     # Rust CLI (legacy presets/plugins)
-kacu-sysinfo/                # C system-info helper
+kacu-sysinfo/                # Go system-info helper
 plugins-example/             # example Lua plugin
 tools/run_qemu.py            # cross-platform QEMU launcher (Windows-friendly)
 docs/                        # landing page + QEMU testing guide
