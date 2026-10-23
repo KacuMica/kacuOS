@@ -23,10 +23,7 @@ file_permissions=(
   ["/usr/local/bin/kacu-setup"]="0:0:755"
   ["/usr/local/bin/kacu-pkg"]="0:0:755"
   ["/usr/local/bin/kacu_install"]="0:0:755"
-<<<<<<< HEAD
   ["/usr/local/bin/langley"]="0:0:755"
-=======
->>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
   ["/etc/kacu/presets/hooks/server-post.py"]="0:0:755"
   ["/etc/kacu/presets/hooks/ai-post.py"]="0:0:755"
   ["/root/customize_airootfs.sh"]="0:0:755"

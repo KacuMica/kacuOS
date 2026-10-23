@@ -6,7 +6,11 @@
 # Target:  Intel Core 2 Duo class, HDD, 4 GB RAM
 #          (low-RAM tuning lives in airootfs: zram + masked services)
 #
-# One package or group per line. Blank lines and '#' comments are allowed.
+# One package or group per line. Blank lines and full-line '#' comments are
+# allowed. Do NOT use inline (trailing) comments: mkarchiso strips the
+# comment text but leaves the trailing spaces behind, and pacman then fails
+# with "target not found: <pkg>   ". The file is sanitized by CI as a
+# safety net, but keep it clean anyway.
 # The list is intentionally "minimal but usable": it boots to a GNOME
 # session, has networking, audio and enough tooling to develop and to
 # install kacuOS onto a disk. Everything else is a "box" installed later
@@ -29,7 +33,7 @@ bash-completion
 
 # --- Kernel / hardware support -------------------------------------------
 alsa-utils
-sof-firmware               # audio DSP firmware on modern Intel laptops
+sof-firmware
 usbutils
 pciutils
 
@@ -46,9 +50,9 @@ e2fsprogs
 exfatprogs
 ntfs-3g
 efibootmgr
-grub                       # installed by kacu_install on the target
+grub
 os-prober
-arch-install-scripts       # provides pacstrap / genfstab
+arch-install-scripts
 
 # --- Minimal GNOME (Wayland) ---------------------------------------------
 gnome-shell
@@ -57,14 +61,14 @@ gnome-session
 gnome-settings-daemon
 gnome-control-center
 gnome-keyring
-gnome-console              # the lightweight GTK4 terminal (kgx)
-nautilus                   # file manager
+gnome-console
+nautilus
 gvfs
 xdg-user-dirs
 xdg-desktop-portal-gnome
 xdg-utils
 adwaita-icon-theme
-gnome-themes-extra         # Adwaita-dark
+gnome-themes-extra
 gdm
 polkit
 accountsservice
@@ -76,8 +80,8 @@ pipewire
 pipewire-pulse
 pipewire-alsa
 wireplumber
-mesa                       # software (llvmpipe) + Intel renderer
-xorg-xwayland              # X11 fallback for legacy apps
+mesa
+xorg-xwayland
 
 # --- Fonts ---------------------------------------------------------------
 noto-fonts
@@ -86,7 +90,7 @@ ttf-dejavu
 ttf-liberation
 
 # --- Low-RAM / HDD optimizations -----------------------------------------
-zram-generator             # config: airootfs/etc/systemd/zram-generator.conf
+zram-generator
 
 # --- Development / scripting (so the ISO itself is dev-ready) ------------
 git
@@ -100,5 +104,8 @@ make
 pkgconf
 cmake
 
-# --- Bootloader (BIOS boot of the ISO; UEFI uses systemd-boot) -----------
+# --- Bootloader support (BIOS boot of the ISO; UEFI uses systemd-boot) ----
 syslinux
+memtest86+
+memtest86+-efi
+edk2-shell

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ==========================================================================
 # build-iso.yml — build the kacuOS live/install ISO in GitHub Actions.
 #
@@ -13,27 +12,19 @@
 # mirrorlist. If it has no servers, every [extra] package fails with
 # "target not found". We therefore write a mirrorlist with two working
 # servers before the first pacman -Syu.
+#
+# setup_boot_files.py is intentionally NOT run here: the bootloader files
+# (syslinux/, efiboot/, grub/) are already committed in the profile, and a
+# fresh copy from releng would also overwrite the custom pacman.conf.
 # ==========================================================================
 name: build-iso
 
 on:
   push:
     branches: [main, master]
-    paths:
-      - "archiso/**"
-      - "kacu-install/**"
-      - "kacu-pkg/**"
-      - "kacu-sysinfo/**"
-      - "kacuctl/**"
-      - ".github/workflows/build-iso.yml"
+    tags: ["v*"]
   pull_request:
-    paths:
-      - "archiso/**"
-      - "kacu-install/**"
-      - "kacu-pkg/**"
-      - "kacu-sysinfo/**"
-      - "kacuctl/**"
-      - ".github/workflows/build-iso.yml"
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -45,33 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-=======
-name: Build kacuOS ISO
-
-# Builds the GNOME ISO on an Arch container and uploads it as an artifact.
-# This is the recommended path when you only have Windows: no local Arch
-# installation is required.
-on:
-  workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-
-jobs:
-  build-iso:
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
       options: --privileged
-
->>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
-<<<<<<< HEAD
           set -euo pipefail
           # The archiso profile reads the host mirrorlist; give it working
           # servers FIRST, then upgrade and install the toolchain.
@@ -88,6 +59,18 @@ jobs:
       - name: Bake tooling into the profile
         run: python3 archiso/bake.py --profile kacu-desktop
 
+      - name: Sanitize package lists
+        # mkarchiso strips inline '# comment' text but keeps the trailing
+        # spaces, and pacman then reports "target not found: <pkg>   ".
+        # Strip inline comments plus trailing whitespace everywhere as a
+        # safety net (keep the package lists clean in the repo, too).
+        run: |
+          set -euo pipefail
+          for list in archiso/*/packages.x86_64; do
+            sed -i -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//' "$list"
+            echo "sanitized: $list"
+          done
+
       - name: Build the ISO
         run: |
           set -euo pipefail
@@ -98,34 +81,11 @@ jobs:
         run: |
           ls -lh out/
           sha256sum out/*.iso
-=======
-          pacman -Syu --noconfirm archiso git python rust gcc make
-
-      - name: Bake tooling into the profile
-        run: |
-          cd archiso
-          python bake.py
-          python setup_boot_files.py kacu-desktop
-
-      - name: Build the ISO
-        run: |
-          cd archiso/kacu-desktop
-          mkarchiso -v -o out/ .
-
-      - name: Show the result
-        run: ls -lh archiso/kacu-desktop/out/
->>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 
       - name: Upload the ISO artifact
         uses: actions/upload-artifact@v4
         with:
-<<<<<<< HEAD
           name: kacuos-live-iso
           path: out/*.iso
           if-no-files-found: error
           retention-days: 14
-=======
-          name: kacuos-iso
-          path: archiso/kacu-desktop/out/*.iso
-          if-no-files-found: error
->>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
