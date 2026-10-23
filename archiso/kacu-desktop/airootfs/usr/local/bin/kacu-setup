@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# ==========================================================================
+# kacu-setup — one-shot configuration for kacuOS (live or installed)
+#
+# Usage:
+#   kacu-setup --system   # machine-wide: zram, GNOME defaults, mask services
+#   kacu-setup --user     # current user only: apply the GNOME settings
+#   kacu-setup --all      # both (default)
+#
+# Design: idempotent, tolerant (missing units never abort), fully offline.
+# ==========================================================================
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+GNOME_SETTINGS = Path("/etc/kacu/gnome_settings.ini")
+DCONF_DB_NAME = "local"
+DCONF_DB_DIR = Path(f"/etc/dconf/db/{DCONF_DB_NAME}.d")
+
+SYSTEM_UNITS = [
+    "gnome-software.service",
+    "packagekit.service",
+    "packagekit-offline-update.service",
+    "gnome-remote-desktop.service",
+    "colord.service",
+    "ModemManager.service",
+    "fstrim.timer",
+    "rygel.service",
+    "gnome-user-share.service",
+    "tracker-miner-fs.service",
+    "tracker-store.service",
+]
+
+USER_UNITS = [
+    "tracker-miner-fs-3.service",
+    "tracker-miner-fs-control-3.service",
+    "tracker-writeback-3.service",
+    "evolution-addressbook-factory.service",
+    "evolution-calendar-factory.service",
+    "evolution-source-registry.service",
+    "evolution-alarm-notify.service",
+    "rygel.service",
+]
+
+
+def log(message: str) -> None:
+    print(f"  -> {message}", flush=True)
+
+
+def run(cmd: list[str], quiet: bool = True) -> int:
+    """Run a command; return its exit code (127 when it is not installed)."""
+    try:
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL if quiet else None,
+            stderr=subprocess.DEVNULL if quiet else None,
+        ).returncode
+    except FileNotFoundError:
+        return 127
+
+
+def require_root() -> None:
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is not None and geteuid() != 0:
+        sys.exit(f"error: --system must run as root (try: sudo {sys.argv[0]} --system)")
+
+
+# --- zram -----------------------------------------------------------------
+def configure_zram() -> None:
+    print("==> zram: enabling the generator unit")
+    # The unit is generated from zram-generator.conf; enabling is defensive.
+    run(["systemctl", "enable", "systemd-zram-setup@zram0.service"])
+
+
+# --- GNOME defaults via dconf --------------------------------------------
+def configure_dconf_system() -> None:
+    print("==> dconf: installing system-wide GNOME defaults")
+    if not GNOME_SETTINGS.is_file():
+        log(f"warn: {GNOME_SETTINGS} not found, skipping")
+        return
+
+    profile = Path("/etc/dconf/profile/user")
+    if not profile.exists():
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(
+            f"user-db:user\nsystem-db:{DCONF_DB_NAME}\n", encoding="utf-8"
+        )
+        log("created /etc/dconf/profile/user")
+
+    DCONF_DB_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(GNOME_SETTINGS, DCONF_DB_DIR / "00-kacu")
+
+    if shutil.which("dconf"):
+        if run(["dconf", "update"], quiet=False) == 0:
+            log(f"compiled the '{DCONF_DB_NAME}' dconf database")
+    else:
+        log("warn: dconf not installed yet; run 'dconf update' after installing it")
+
+
+# --- heavy background services -------------------------------------------
+def mask_heavy_services() -> None:
+    print("==> systemd: masking background services that waste HDD/RAM")
+
+    for unit in SYSTEM_UNITS:
+        if run(["systemctl", "mask", unit]) == 0:
+            log(f"masked {unit}")
+
+    # No user systemd manager exists inside a chroot, so mask user units for
+    # every user by symlinking them to /dev/null in /etc/systemd/user.
+    user_dir = Path("/etc/systemd/user")
+    user_dir.mkdir(parents=True, exist_ok=True)
+    for unit in USER_UNITS:
+        link = user_dir / unit
+        if link.is_symlink() or link.exists():
+            link.unlink()
+        link.symlink_to("/dev/null")
+    log(f"masked {len(USER_UNITS)} user units (tracker/evolution)")
+
+    run(["systemctl", "disable", "NetworkManager-wait-online.service"])
+
+
+def enable_essentials() -> None:
+    print("==> systemd: enabling the services kacuOS needs")
+    for unit in ("NetworkManager.service", "gdm.service", "bluetooth.service",
+                 "systemd-oomd.service"):
+        run(["systemctl", "enable", unit])
+
+
+def cmd_system() -> int:
+    require_root()
+    configure_zram()
+    configure_dconf_system()
+    mask_heavy_services()
+    enable_essentials()
+    print("==> system setup done")
+    return 0
+
+
+# --- per-user settings ----------------------------------------------------
+def cmd_user() -> int:
+    if not os.environ.get("DBUS_SESSION_BUS_ADDRESS") and not os.environ.get("XDG_RUNTIME_DIR"):
+        print("warn: no user session detected, skipping --user settings", file=sys.stderr)
+        return 0
+
+    print(f"==> applying GNOME settings for user: {os.environ.get('USER', 'unknown')}")
+    if not GNOME_SETTINGS.is_file():
+        print(f"warn: {GNOME_SETTINGS} not found, skipping", file=sys.stderr)
+        return 0
+
+    # `dconf load /` reads groups as absolute paths, e.g. [org/gnome/desktop/...].
+    with GNOME_SETTINGS.open("rb") as fh:
+        subprocess.run(["dconf", "load", "/"], stdin=fh, check=False)
+    log("GNOME settings loaded into the user dconf database")
+
+    run(["systemctl", "--user", "mask", "tracker-miner-fs-3.service"])
+    run(["systemctl", "--user", "stop", "tracker-miner-fs-3.service"])
+    print("==> user setup done")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="kacu-setup",
+        description="Apply kacuOS system and GNOME settings",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--system", action="store_true", help="machine-wide setup (root)")
+    group.add_argument("--user", action="store_true", help="current user's GNOME settings")
+    group.add_argument("--all", action="store_true", help="system + user (default)")
+    args = parser.parse_args()
+
+    if args.system:
+        return cmd_system()
+    if args.user:
+        return cmd_user()
+    status = cmd_system()
+    return status or cmd_user()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

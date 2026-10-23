@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install kacuOS
+Comment=Install kacuOS to a disk (erases the selected disk)
+Exec=kgx -e "sudo /usr/local/bin/kacu_install"
+Icon=system-software-install
+Terminal=false
+Categories=System;
+Keywords=install;kacuos;arch;

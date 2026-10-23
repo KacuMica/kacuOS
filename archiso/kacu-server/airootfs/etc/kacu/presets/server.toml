@@ -1,0 +1,19 @@
+# kacuOS "box" preset — read by kacu-pkg (see kacu-pkg/kacu-pkg).
+
+[preset]
+name = "server"
+description = "Server box: Docker + minimal single-node k3s cluster"
+profile = ["server"]
+
+[packages]
+pacman = [
+    "docker",
+    "docker-compose",
+    "docker-buildx",
+    "git",
+    "iptables-nft",      # k3s networking
+]
+
+[hooks]
+# Enables docker and installs k3s without traefik/servicelb/metrics-server.
+post_install = "hooks/server-post.py"

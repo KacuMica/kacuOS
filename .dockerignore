@@ -1,0 +1,6 @@
+kacuctl/target
+kacuctl/Cargo.lock
+kacuctl/plugins
+archiso
+kacu-sysinfo/kacu-sysinfo
+.git

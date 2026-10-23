@@ -1,0 +1,29 @@
+# kacuOS "box" preset — read by kacu-pkg (see kacu-pkg/kacu-pkg).
+# The format is compatible with the older kacuctl presets:
+# [preset] metadata, [packages] list, optional [hooks].
+
+[preset]
+name = "dev"
+description = "Developer box: toolchain, editors, VCS, scripting languages"
+profile = ["desktop"]
+
+[packages]
+pacman = [
+    # Toolchain / build system
+    "base-devel",        # gcc, g++, make, pkgconf, autoconf, ...
+    "cmake",
+    "git",
+    # Editors
+    "neovim",
+    "micro",
+    # Scripting
+    "python",
+    "python-pip",
+    "python-virtualenv",
+    "lua",
+    "luarocks",
+    # Extra runtimes — remove these three lines for a leaner box
+    "cargo",
+    "rust",
+    "go",
+]

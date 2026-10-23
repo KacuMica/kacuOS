@@ -1,0 +1,104 @@
+# ==========================================================================
+# kacuOS live/install ISO — package list (x86_64)
+#
+# Base:    Arch Linux (built with mkarchiso/archiso)
+# Desktop: minimal GNOME on Wayland (gnome-shell + mutter + gdm)
+# Target:  Intel Core 2 Duo class, HDD, 4 GB RAM
+#          (low-RAM tuning lives in airootfs: zram + masked services)
+#
+# One package or group per line. Blank lines and '#' comments are allowed.
+# The list is intentionally "minimal but usable": it boots to a GNOME
+# session, has networking, audio and enough tooling to develop and to
+# install kacuOS onto a disk. Everything else is a "box" installed later
+# with `kacu-pkg install <box>` (see kacu-pkg/).
+# ==========================================================================
+
+# --- Boot / live environment core ----------------------------------------
+base
+linux
+linux-firmware
+intel-ucode
+amd-ucode
+mkinitcpio
+mkinitcpio-archiso
+sudo
+nano
+man-db
+less
+bash-completion
+
+# --- Kernel / hardware support -------------------------------------------
+alsa-utils
+sof-firmware               # audio DSP firmware on modern Intel laptops
+usbutils
+pciutils
+
+# --- Networking ----------------------------------------------------------
+networkmanager
+wpa_supplicant
+wireless-regdb
+
+# --- Storage + disk-install tooling (Live/Install ISO) -------------------
+parted
+gptfdisk
+dosfstools
+e2fsprogs
+exfatprogs
+ntfs-3g
+efibootmgr
+grub                       # installed by kacu_install on the target
+os-prober
+arch-install-scripts       # provides pacstrap / genfstab
+
+# --- Minimal GNOME (Wayland) ---------------------------------------------
+gnome-shell
+mutter
+gnome-session
+gnome-settings-daemon
+gnome-control-center
+gnome-keyring
+gnome-console              # the lightweight GTK4 terminal (kgx)
+nautilus                   # file manager
+gvfs
+xdg-user-dirs
+xdg-desktop-portal-gnome
+xdg-utils
+adwaita-icon-theme
+gnome-themes-extra         # Adwaita-dark
+gdm
+polkit
+accountsservice
+upower
+power-profiles-daemon
+
+# --- Audio / graphics stack ----------------------------------------------
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+mesa                       # software (llvmpipe) + Intel renderer
+xorg-xwayland              # X11 fallback for legacy apps
+
+# --- Fonts ---------------------------------------------------------------
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu
+ttf-liberation
+
+# --- Low-RAM / HDD optimizations -----------------------------------------
+zram-generator             # config: airootfs/etc/systemd/zram-generator.conf
+
+# --- Development / scripting (so the ISO itself is dev-ready) ------------
+git
+python
+python-pip
+lua
+neovim
+micro
+gcc
+make
+pkgconf
+cmake
+
+# --- Bootloader (BIOS boot of the ISO; UEFI uses systemd-boot) -----------
+syslinux

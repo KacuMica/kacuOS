@@ -1,0 +1,26 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file",
+    "source": "/etc/kacu/kacu-ascii.txt",
+    "padding": { "right": 2 }
+  },
+  "display": {
+    "separator": ": "
+  },
+  "modules": [
+    "title",
+    "separator",
+    "os",
+    "kernel",
+    "uptime",
+    "shell",
+    "cpu",
+    "memory",
+    "disk",
+    {
+      "type": "custom",
+      "format": "Run 'kacuctl status' for live RAM/CPU"
+    }
+  ]
+}

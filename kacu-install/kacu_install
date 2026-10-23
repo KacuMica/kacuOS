@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+# ==========================================================================
+# kacu_install — interactive Arch Linux installer for kacuOS
+#
+# Runs inside the kacuOS live ISO (needs root). It partitions a whole disk,
+# installs a minimal GNOME system with GRUB (UEFI or BIOS), copies the kacuOS
+# configuration, creates a user and optionally installs package boxes.
+#
+# Usage:
+#   sudo kacu_install                       # fully interactive
+#   sudo kacu_install --disk /dev/sda       # preselect the target disk
+#   sudo kacu_install --list-disks
+#   sudo kacu_install --disk /dev/sda --yes --dry-run
+#
+# WARNING: the selected disk is completely erased.
+# ==========================================================================
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+MNT = Path("/mnt")
+PACKAGE_LIST = Path("/etc/kacu/install-packages.txt")
+LOG_FILE = Path("/var/log/kacu_install.log")
+LIVE_CONFIG_DIR = Path("/etc/kacu")
+AVAILABLE_BOXES = ("dev", "server", "ai")
+
+# Fallback when /etc/kacu/install-packages.txt is not baked in.
+DEFAULT_PACKAGES = [
+    "base", "linux", "linux-firmware", "intel-ucode", "amd-ucode",
+    "sudo", "networkmanager", "wpa_supplicant", "wireless-regdb",
+    "grub", "efibootmgr", "os-prober", "e2fsprogs", "dosfstools",
+    "zram-generator", "git", "python", "lua", "neovim", "micro",
+    "gcc", "make", "pkgconf", "cmake",
+    "gnome-shell", "mutter", "gnome-session", "gnome-settings-daemon",
+    "gnome-control-center", "gnome-keyring", "gnome-console", "nautilus",
+    "gvfs", "xdg-user-dirs", "xdg-desktop-portal-gnome", "xdg-utils",
+    "adwaita-icon-theme", "gnome-themes-extra", "gdm", "polkit",
+    "accountsservice", "upower", "power-profiles-daemon",
+    "pipewire", "pipewire-pulse", "pipewire-alsa", "wireplumber",
+    "mesa", "xorg-xwayland", "noto-fonts", "noto-fonts-emoji",
+    "ttf-dejavu", "ttf-liberation", "alsa-utils", "sof-firmware",
+    "man-db", "less", "bash-completion",
+]
+
+
+# --- logging / process helpers -------------------------------------------
+def log(message: str) -> None:
+    print(message, flush=True)
+    try:
+        with LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(message + "\n")
+    except OSError:
+        pass
+
+
+def warn(message: str) -> None:
+    log(f"WARNING: {message}")
+
+
+def die(message: str) -> "None":
+    log(f"ERROR: {message}")
+    sys.exit(1)
+
+
+def run(cmd: list[str], check: bool = True, capture: bool = False,
+        stdin_data: str | None = None) -> subprocess.CompletedProcess:
+    log(f"+ {' '.join(cmd)}")
+    try:
+        return subprocess.run(
+            cmd,
+            check=check,
+            text=True,
+            input=stdin_data,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+        )
+    except FileNotFoundError:
+        die(f"command not found: {cmd[0]}")
+    except subprocess.CalledProcessError as exc:
+        if capture and exc.stderr:
+            log(exc.stderr.strip())
+        die(f"command failed ({exc.returncode}): {' '.join(cmd)}")
+
+
+def in_chroot(*cmd: str, check: bool = True, stdin_data: str | None = None) -> None:
+    """Run a command inside the new system."""
+    run(["arch-chroot", str(MNT), *cmd], check=check, stdin_data=stdin_data)
+
+
+def require_root() -> None:
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is not None and geteuid() != 0:
+        die("kacu_install must run as root (try: sudo kacu_install)")
+
+
+# --- disk discovery -------------------------------------------------------
+def disk_info(disk: str) -> str:
+    result = subprocess.run(
+        ["lsblk", "-dno", "SIZE,MODEL", disk],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def list_disks() -> list[str]:
+    result = subprocess.run(
+        ["lsblk", "-dpno", "NAME,SIZE,MODEL,TYPE"],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    disks = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if parts and parts[-1] == "disk":
+            disks.append(line)
+    return disks
+
+
+def choose_disk(preselected: str | None) -> str:
+    disks = list_disks()
+    if not disks:
+        die("no disks found")
+
+    print("\nAvailable disks:")
+    for index, line in enumerate(disks, 1):
+        print(f"  {index}) {line}")
+
+    if preselected:
+        disk = preselected
+    else:
+        answer = input("\nSelect the target disk number: ").strip()
+        if not answer.isdigit() or not (1 <= int(answer) <= len(disks)):
+            die("invalid selection")
+        disk = disks[int(answer) - 1].split()[0]
+
+    if not Path(disk).exists():
+        die(f"{disk} does not exist")
+
+    kind = subprocess.run(
+        ["lsblk", "-dno", "TYPE", disk],
+        text=True, stdout=subprocess.PIPE,
+    ).stdout.strip()
+    if kind != "disk":
+        die(f"{disk} is not a whole disk (type={kind})")
+
+    mounted = subprocess.run(
+        ["lsblk", "-no", "MOUNTPOINT", disk],
+        text=True, stdout=subprocess.PIPE,
+    ).stdout.strip()
+    if mounted:
+        die(f"{disk} has mounted partitions; unmount them first")
+    return disk
+
+
+def part_name(disk: str, number: int) -> str:
+    # /dev/nvme0n1 and /dev/mmcblk0 need a 'p' separator.
+    if disk[-1].isdigit():
+        return f"{disk}p{number}"
+    return f"{disk}{number}"
+
+
+def detect_uefi() -> bool:
+    return Path("/sys/firmware/efi").is_dir()
+
+
+# --- installation steps ---------------------------------------------------
+def partition_disk(disk: str, uefi: bool) -> None:
+    log("\n==> Partitioning (this erases the disk)")
+    run(["sgdisk", "--zap-all", disk])
+    if uefi:
+        run(["sgdisk", "-n", "1:0:+512M", "-t", "1:ef00", "-c", "1:kacuOS ESP", disk])
+        run(["sgdisk", "-n", "2:0:0", "-t", "2:8300", "-c", "2:kacuOS root", disk])
+    else:
+        run(["sgdisk", "-n", "1:0:+1M", "-t", "1:ef02", "-c", "1:BIOS boot", disk])
+        run(["sgdisk", "-n", "2:0:0", "-t", "2:8300", "-c", "2:kacuOS root", disk])
+    run(["partprobe", disk], check=False)
+    time.sleep(1)
+
+
+def format_and_mount(disk: str, uefi: bool) -> None:
+    root_part = part_name(disk, 2)
+    log("\n==> Formatting and mounting")
+    if uefi:
+        esp_part = part_name(disk, 1)
+        run(["mkfs.fat", "-F32", "-n", "KACU_ESP", esp_part])
+    run(["mkfs.ext4", "-F", "-L", "kacuOS", root_part])
+
+    MNT.mkdir(parents=True, exist_ok=True)
+    run(["mount", root_part, str(MNT)])
+    if uefi:
+        esp_mount = MNT / "boot/efi"
+        esp_mount.mkdir(parents=True, exist_ok=True)
+        run(["mount", part_name(disk, 1), str(esp_mount)])
+
+
+def load_packages() -> list[str]:
+    if not PACKAGE_LIST.is_file():
+        warn(f"{PACKAGE_LIST} not found, using the built-in package list")
+        return list(DEFAULT_PACKAGES)
+    packages = []
+    for line in PACKAGE_LIST.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            packages.append(line)
+    return packages or list(DEFAULT_PACKAGES)
+
+
+def pacstrap(packages: list[str]) -> None:
+    log(f"\n==> Installing {len(packages)} packages (this takes a while)")
+    run(["pacstrap", "-K", str(MNT), *packages])
+
+    log("==> Writing /etc/fstab")
+    fstab = subprocess.run(
+        ["genfstab", "-U", str(MNT)],
+        text=True, stdout=subprocess.PIPE, check=True,
+    ).stdout
+    (MNT / "etc/fstab").write_text(fstab, encoding="utf-8")
+
+
+def copy_kacuos_config() -> None:
+    log("\n==> Copying kacuOS configuration into the target")
+    if LIVE_CONFIG_DIR.is_dir():
+        target = MNT / "etc/kacu"
+        target.mkdir(parents=True, exist_ok=True)
+        for entry in LIVE_CONFIG_DIR.iterdir():
+            destination = target / entry.name
+            if entry.is_dir():
+                shutil.copytree(entry, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(entry, destination)
+
+    for relative in ("etc/systemd/zram-generator.conf", "etc/sysctl.d/99-zram.conf",
+                     "etc/pacman.d/mirrorlist"):
+        source = Path("/") / relative
+        if source.exists():
+            destination = MNT / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+    for binary in ("kacu-setup", "kacu-pkg"):
+        source = Path("/usr/local/bin") / binary
+        if source.exists():
+            destination = MNT / "usr/local/bin" / binary
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            destination.chmod(0o755)
+
+
+def write_file(path: Path, content: str, mode: int | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    if mode is not None:
+        path.chmod(mode)
+
+
+def configure_system(hostname: str, username: str, timezone: str,
+                     root_password: str, user_password: str,
+                     uefi: bool, disk: str) -> None:
+    log("\n==> Configuring the installed system")
+
+    if not (Path("/usr/share/zoneinfo") / timezone).exists():
+        die(f"unknown timezone: {timezone}")
+    run(["ln", "-sf", f"/usr/share/zoneinfo/{timezone}", str(MNT / "etc/localtime")])
+    in_chroot("hwclock", "--systohc", check=False)
+
+    write_file(MNT / "etc/locale.gen", "en_US.UTF-8 UTF-8\n")
+    in_chroot("locale-gen")
+    write_file(MNT / "etc/locale.conf", "LANG=en_US.UTF-8\n")
+
+    write_file(MNT / "etc/hostname", f"{hostname}\n")
+    write_file(
+        MNT / "etc/hosts",
+        f"127.0.0.1 localhost\n"
+        f"::1 localhost\n"
+        f"127.0.1.1 {hostname}.localdomain {hostname}\n",
+    )
+
+    # Create the user BEFORE setting passwords (chpasswd fails otherwise).
+    in_chroot("useradd", "-m", "-G", "wheel,video,audio,storage,network",
+              "-s", "/bin/bash", username)
+
+    # Passwords are fed over stdin to avoid shell-escaping problems.
+    credentials = f"root:{root_password}\n{username}:{user_password}\n"
+    in_chroot("chpasswd", stdin_data=credentials)
+    write_file(MNT / "etc/sudoers.d/10-wheel", "%wheel ALL=(ALL:ALL) ALL\n", mode=0o440)
+
+    in_chroot("systemctl", "enable", "NetworkManager.service")
+    in_chroot("systemctl", "enable", "gdm.service")
+    in_chroot("systemctl", "set-default", "graphical.target")
+
+    if (MNT / "usr/local/bin/kacu-setup").exists():
+        in_chroot("/usr/local/bin/kacu-setup", "--system")
+
+    log("==> Installing GRUB")
+    if uefi:
+        in_chroot("grub-install", "--target=x86_64-efi",
+                  "--efi-directory=/boot/efi", "--bootloader-id=kacuOS", "--recheck")
+    else:
+        in_chroot("grub-install", "--target=i386-pc", "--recheck", disk)
+    in_chroot("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
+    in_chroot("mkinitcpio", "-P")
+
+
+def install_boxes(boxes: list[str]) -> None:
+    if not boxes:
+        return
+    log(f"\n==> Installing boxes: {', '.join(boxes)}")
+    in_chroot("kacu-pkg", "install", *boxes, check=False)
+
+
+def unmount_all() -> None:
+    log("\n==> Unmounting")
+    for _ in range(3):
+        if run(["umount", "-R", str(MNT)], check=False).returncode == 0:
+            break
+        time.sleep(1)
+
+
+# --- interactive input ----------------------------------------------------
+def prompt(text: str, default: str | None = None) -> str:
+    suffix = f" [{default}]" if default is not None else ""
+    answer = input(f"{text}{suffix}: ").strip()
+    return answer or (default or "")
+
+
+def prompt_password(label: str) -> str:
+    while True:
+        first = getpass.getpass(f"{label}: ")
+        if not first:
+            print("Password cannot be empty.")
+            continue
+        if first != getpass.getpass(f"Repeat {label.lower()}: "):
+            print("Passwords do not match.")
+            continue
+        return first
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="kacu_install",
+        description="Install kacuOS to a disk (destroys all data on it)",
+    )
+    parser.add_argument("--disk", help="target disk, e.g. /dev/sda or /dev/nvme0n1")
+    parser.add_argument("--hostname", default=None)
+    parser.add_argument("--username", default=None)
+    parser.add_argument("--timezone", default=None)
+    parser.add_argument("--boxes", default=None,
+                        help="comma-separated boxes to install: dev,server,ai")
+    parser.add_argument("--bios", action="store_true", help="force a BIOS install")
+    parser.add_argument("--uefi", action="store_true", help="force a UEFI install")
+    parser.add_argument("--yes", action="store_true", help="skip the final confirmation")
+    parser.add_argument("--dry-run", action="store_true", help="show the plan and exit")
+    parser.add_argument("--list-disks", action="store_true", help="list disks and exit")
+    args = parser.parse_args()
+
+    require_root()
+    if args.list_disks:
+        for line in list_disks():
+            print(line)
+        return 0
+
+    if not (MNT.is_dir() and shutil.which("pacstrap")):
+        warn("this does not look like the kacuOS live environment; continuing anyway")
+
+    log("kacuOS installer")
+    log("================")
+    if LOG_FILE.parent.is_dir():
+        LOG_FILE.write_text("", encoding="utf-8")
+
+    disk = choose_disk(args.disk)
+    if args.uefi and args.bios:
+        die("--uefi and --bios are mutually exclusive")
+    uefi = args.uefi or (not args.bios and detect_uefi())
+
+    hostname = args.hostname or prompt("Hostname", "kacuos")
+    username = args.username or prompt("Username", "kacu")
+    timezone = args.timezone or prompt("Timezone", "UTC")
+    boxes = [b.strip() for b in (args.boxes or "").split(",") if b.strip()]
+    invalid = [b for b in boxes if b not in AVAILABLE_BOXES]
+    if invalid:
+        die(f"unknown box(es): {', '.join(invalid)} (available: {', '.join(AVAILABLE_BOXES)})")
+    packages = load_packages()
+
+    log("\nPlan")
+    log("----")
+    log(f"  disk:      {disk}  ({disk_info(disk)})")
+    log(f"  firmware:  {'UEFI' if uefi else 'BIOS'}")
+    log(f"  hostname:  {hostname}")
+    log(f"  user:      {username} (wheel, passwordless sudo not enabled)")
+    log(f"  timezone:  {timezone}")
+    log(f"  packages:  {len(packages)}")
+    log(f"  boxes:     {', '.join(boxes) if boxes else '(none)'}")
+    log("")
+    log("ALL DATA ON THE SELECTED DISK WILL BE DESTROYED.")
+
+    if args.dry_run:
+        log("\nDry run: stopping before any destructive change.")
+        return 0
+    if not args.yes and input("Type YES to continue: ").strip() != "YES":
+        log("Cancelled.")
+        return 1
+
+    root_password = prompt_password("Root password")
+    user_password = prompt_password(f"Password for {username}")
+
+    try:
+        partition_disk(disk, uefi)
+        format_and_mount(disk, uefi)
+        pacstrap(packages)
+        copy_kacuos_config()
+        configure_system(hostname, username, timezone,
+                         root_password, user_password, uefi, disk)
+        install_boxes(boxes)
+    except SystemExit:
+        warn("installation aborted; target may be partially configured")
+        raise
+    finally:
+        unmount_all()
+
+    log("\n==> Installation complete.")
+    log("    Remove the ISO and reboot:  reboot")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

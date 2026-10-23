@@ -1,0 +1,22 @@
+# kacuOS "box" preset — read by kacu-pkg (see kacu-pkg/kacu-pkg).
+
+[preset]
+name = "ai"
+description = "AI box: Ollama runtime, llama.cpp and Python tooling"
+profile = ["desktop", "server"]
+
+[packages]
+pacman = [
+    "ollama",            # official Arch package (extra); CPU runtime by default
+    "python",
+    "python-pip",
+    "python-virtualenv",
+    "cmake",             # needed if llama.cpp is built from source
+    "git",
+    "curl",
+]
+
+[hooks]
+# llama.cpp is AUR-only ("llama-cpp"); the hook installs it when possible and
+# prints manual build instructions otherwise.
+post_install = "hooks/ai-post.py"
