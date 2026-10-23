@@ -3,8 +3,13 @@
 # bake.py — build the kacuOS tooling and bake it into archiso profiles.
 #
 # Files under airootfs/ are copied byte-for-byte into the ISO, so this has to
+<<<<<<< HEAD
 # run before mkarchiso whenever kacuctl, kacu-sysinfo, kacu-pkg, langley,
 # kacu_install or their presets change.
+=======
+# run before mkarchiso whenever kacuctl, kacu-sysinfo, kacu-pkg, kacu_install
+# or their presets change.
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 #
 # Usage:
 #   ./bake.py                      # build everything, bake into every profile
@@ -14,7 +19,10 @@
 from __future__ import annotations
 
 import argparse
+<<<<<<< HEAD
 import os
+=======
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 import shutil
 import stat
 import subprocess
@@ -27,6 +35,7 @@ ROOT = SCRIPT_DIR.parent
 # Files that must be executable inside the ISO.
 EXECUTABLE_NAMES = {
     "kacuctl", "kacu-sysinfo", "kacu-pkg", "kacu_install", "kacu-setup",
+<<<<<<< HEAD
     "langley",
 }
 
@@ -37,6 +46,16 @@ def run(cmd: list[str], cwd: Path | None = None, dry_run: bool = False,
     if dry_run:
         return 0
     return subprocess.call(cmd, cwd=str(cwd) if cwd else None, env=env)
+=======
+}
+
+
+def run(cmd: list[str], cwd: Path | None = None, dry_run: bool = False) -> int:
+    print(f"+ {' '.join(cmd)}", flush=True)
+    if dry_run:
+        return 0
+    return subprocess.call(cmd, cwd=str(cwd) if cwd else None)
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 
 
 def make_executable(path: Path) -> None:
@@ -84,6 +103,7 @@ def build_kacu_sysinfo(dry_run: bool) -> Path | None:
     return ROOT / "kacu-sysinfo" / "kacu-sysinfo"
 
 
+<<<<<<< HEAD
 def build_langley(dry_run: bool) -> Path | None:
     module = ROOT / "kacu-install" / "langley"
     if not (module / "go.mod").exists():
@@ -107,6 +127,8 @@ def build_langley(dry_run: bool) -> Path | None:
     return output
 
 
+=======
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 def discover_profiles(explicit: list[str]) -> list[Path]:
     if explicit:
         profiles = [SCRIPT_DIR / name for name in explicit]
@@ -169,18 +191,27 @@ def main() -> int:
 
     binaries: dict[str, Path | None] = {}
     if args.skip_build:
+<<<<<<< HEAD
         for name, candidate in (
             ("kacuctl", ROOT / "kacuctl" / "target" / "release" / "kacuctl"),
             ("kacu-sysinfo", ROOT / "kacu-sysinfo" / "kacu-sysinfo"),
             ("langley", ROOT / "kacu-install" / "langley" / "langley"),
         ):
+=======
+        for name in ("kacuctl", "kacu-sysinfo"):
+            candidate = ROOT / ("kacuctl/target/release/kacuctl" if name == "kacuctl"
+                                else "kacu-sysinfo/kacu-sysinfo")
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
             binaries[name] = candidate if candidate.exists() else None
             if binaries[name] is None:
                 print(f"  warn: {name} not built and --skip-build was given")
     else:
         binaries["kacuctl"] = build_kacuctl(args.dry_run)
         binaries["kacu-sysinfo"] = build_kacu_sysinfo(args.dry_run)
+<<<<<<< HEAD
         binaries["langley"] = build_langley(args.dry_run)
+=======
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 
     for profile in profiles:
         bake_profile(profile, binaries)

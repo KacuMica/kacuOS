@@ -11,10 +11,13 @@
 # C build artifacts
 /kacu-sysinfo/kacu-sysinfo
 
+<<<<<<< HEAD
 # Go build artifacts (langley is cross-compiled by bake.py / CI)
 /kacu-install/langley/langley
 /kacu-install/langley/langley.exe
 
+=======
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 # Python
 __pycache__/
 *.py[cod]

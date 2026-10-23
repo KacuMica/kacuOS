@@ -267,7 +267,11 @@ def configure_system(hostname: str, username: str, timezone: str,
     if not (Path("/usr/share/zoneinfo") / timezone).exists():
         die(f"unknown timezone: {timezone}")
     run(["ln", "-sf", f"/usr/share/zoneinfo/{timezone}", str(MNT / "etc/localtime")])
+<<<<<<< HEAD
     in_chroot("hwclock", "--systohc", check=False)
+=======
+    in_chroot("hwclock", "--systohc")
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
 
     write_file(MNT / "etc/locale.gen", "en_US.UTF-8 UTF-8\n")
     in_chroot("locale-gen")
@@ -281,6 +285,7 @@ def configure_system(hostname: str, username: str, timezone: str,
         f"127.0.1.1 {hostname}.localdomain {hostname}\n",
     )
 
+<<<<<<< HEAD
     # Create the user BEFORE setting passwords (chpasswd fails otherwise).
     in_chroot("useradd", "-m", "-G", "wheel,video,audio,storage,network",
               "-s", "/bin/bash", username)
@@ -288,6 +293,14 @@ def configure_system(hostname: str, username: str, timezone: str,
     # Passwords are fed over stdin to avoid shell-escaping problems.
     credentials = f"root:{root_password}\n{username}:{user_password}\n"
     in_chroot("chpasswd", stdin_data=credentials)
+=======
+    # Passwords are fed over stdin to avoid shell-escaping problems.
+    credentials = f"root:{root_password}\n{username}:{user_password}\n"
+    in_chroot("chpasswd", stdin_data=credentials)
+
+    in_chroot("useradd", "-m", "-G", "wheel,video,audio,storage,network",
+              "-s", "/bin/bash", username)
+>>>>>>> 8d49f839a36a99c78b1b0c3a21e06879348582fa
     write_file(MNT / "etc/sudoers.d/10-wheel", "%wheel ALL=(ALL:ALL) ALL\n", mode=0o440)
 
     in_chroot("systemctl", "enable", "NetworkManager.service")
